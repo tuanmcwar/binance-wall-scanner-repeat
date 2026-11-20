@@ -23,7 +23,17 @@ import {
 } from "./telegram.js";
 
 const HOUR_MS = 60 * 60 * 1000;
-// const HOUR_MS = 5 * 60 * 1000;
+
+// ==========================================
+// BLACKLIST FROM ENV
+// ==========================================
+
+const BLACKLIST = new Set(
+  (process.env.BLACKLIST || "")
+    .split(",")
+    .map(symbol => symbol.trim().toUpperCase())
+    .filter(Boolean)
+);
 
 let running = true;
 let scanning = false;
@@ -70,9 +80,18 @@ async function scanMarket(hourKey) {
     log("━━━━━━━━━━━━━━━━━━━━━━━━━━");
     log(`🔍 START SCAN: ${formatHour(hourKey)}`);
 
-    const symbols = await getSymbols();
+    const allSymbols = await getSymbols();
 
-    log(`📊 Total symbols: ${symbols.length}`);
+    // Loại bỏ coin trong BLACKLIST
+    const symbols = allSymbols.filter(
+      symbol => !BLACKLIST.has(symbol)
+    );
+
+    const excluded = allSymbols.length - symbols.length;
+
+    log(`📊 Total Binance symbols: ${allSymbols.length}`);
+    log(`🚫 Blacklisted symbols: ${excluded}`);
+    log(`📊 Symbols to scan: ${symbols.length}`);
 
     for (let i = 0; i < symbols.length; i++) {
       if (!running) break;
@@ -104,9 +123,7 @@ async function scanMarket(hourKey) {
         for (const event of events) {
           eventCounts[event.type]++;
 
-          log(
-            `[${event.type}] ${event.key}`
-          );
+          log(`[${event.type}] ${event.key}`);
         }
 
         if (events.length) {
@@ -139,6 +156,7 @@ async function scanMarket(hourKey) {
     log(`✅ Success: ${success}`);
     log(`❌ Failed: ${failed}`);
     log(`⏭ Skipped: ${skipped}`);
+    log(`🚫 Blacklisted: ${excluded}`);
     log(`🆕 NEW: ${eventCounts.NEW}`);
     log(`🔁 REPEAT: ${eventCounts.REPEAT}`);
     log(`⚠️ NO REPEAT 1: ${eventCounts.NO_REPEAT_1}`);
@@ -151,20 +169,16 @@ async function scanMarket(hourKey) {
     log("━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
   } catch (error) {
-    log(
-      `[SCAN ERROR] ${error.message}`
-    );
+    log(`[SCAN ERROR] ${error.message}`);
 
   } finally {
     scanning = false;
   }
 }
 
-
 async function waitForNextHour() {
   const now = Date.now();
 
-  const HOUR_MS = 60 * 60 * 1000;
   const OFFSET_MS = 2 * 60 * 1000;
 
   const nextScan =
@@ -186,7 +200,6 @@ async function waitForNextHour() {
   }
 }
 
-
 async function main() {
   loadHistory();
 
@@ -199,6 +212,14 @@ async function main() {
   log(
     `📏 Price Range: ±${config.priceRangePercent}%`
   );
+
+  log(`🚫 BLACKLIST: ${BLACKLIST.size} symbols`);
+
+  if (BLACKLIST.size > 0) {
+    log(
+      `🚫 Excluded: ${[...BLACKLIST].join(", ")}`
+    );
+  }
 
   const stats = getHistoryStats();
 
